@@ -1,10 +1,10 @@
-const ethers = require("ethers")
-
-// staging or prod
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// EDIT HERE: Set the enviroment to `prod` or `staging`
 const ENV = "staging"
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+const ethers = require("ethers")
 const RPC_URL = (ENV == "prod") ? "https://polygon-rpc.com" : "https://rpc-mumbai.maticvigil.com/"
-
 const Semaphore = require("./abi/Semaphore.json")
 const provider = new ethers.providers.JsonRpcProvider(RPC_URL)
 
@@ -49,6 +49,9 @@ function plainInput(input) {return input;}
 
 async function main(args) {
 
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // EDIT HERE:
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     const proof = {
         // pass the raw signal and externalNullifier (as passed to the widget) without encoding
         signal: '0x5e2659033d927c7b9a4285a7d22dab14e1081653',
@@ -68,28 +71,49 @@ async function main(args) {
             '0x0ea76166c6c51d7bc07a2253238901f594b2fc6f562315acf89623bcec92c3ef'
         ]
     };
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     const contract = new ethers.Contract(await getSemaphoreAddress(), Semaphore.abi, provider)
     const func = contract.functions['verifyProof(uint256,uint256,uint256,uint256,uint256,uint256[8])'];
 
-    const try_funcs = [hashPlainString, hashByteEncoded, plainInput];
-    var done = false;
-
-    for (f1 of try_funcs) {
-        for (f2 of try_funcs) {
-            console.log(`Trying ${f1.name}(signal) and ${f2.name}(extNullifier) ...`);
-            try {
-                const result = await func(proof.root, 1n, f1(proof.signal), proof.nullifier, f2(proof.externalNullifier), proof.proof);
-                console.log("   ✅ Proof is good ser");
-                console.log("If the encoding is not what you expected, read the comments.");
-                done = true;
-                break;
-            } catch (e) {
-                console.log("   ❌ Proof ain't good ser:", e.errorName)
-            }
-        }
-        if (done) break;
+    // test one common encoding and check for the error
+    var err = null;
+    try {
+        const result = await func(proof.root, 1n, hashByteEncoded(proof.signal), proof.nullifier, hashPlainString(proof.externalNullifier), proof.proof);
+    } catch (e) {
+        err = e.errorName;
     }
+
+    if (err == null) console.log("✅ all good fren, no error!")
+
+    if (err == "InvalidProof") {
+        console.log("🚫 invalid proof, usually that's an encoding issue, let me see if I can find out what's wrong...\n");
+        const try_funcs = [hashPlainString, hashByteEncoded, plainInput];
+        var done = false;
+
+        for (f1 of try_funcs) {
+            for (f2 of try_funcs) {
+                console.log(`Trying ${f1.name}(signal) and ${f2.name}(extNullifier) ...`);
+                try {
+                    const result = await func(proof.root, 1n, f1(proof.signal), proof.nullifier, f2(proof.externalNullifier), proof.proof);
+                    console.log("   ✅ Proof is good ser");
+                    console.log("If the encoding is not what you expected, read the comments in the code here.");
+                    done = true;
+                    break;
+                } catch (e) {
+                    console.log("   ❌ Proof ain't good ser:", e.errorName)
+                }
+            }
+            if (done) break;
+        }
+    }
+
+    if (err == "InvalidRoot") {
+        console.log("🚫 invalid root, probably the root became outdated and you need to insert a new identity (happens on staging)");
+        console.log("If this didn't help, something is terribly wrong and you should report this to the WorldID team.");
+    }
+
+    // maybe i've forgot some other cases?
 }
 
 main(process.argv)
