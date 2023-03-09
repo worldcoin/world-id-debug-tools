@@ -1,0 +1,17 @@
+{
+  "version": "0.2",
+  "enabled": true,
+  "language": "en",
+  "allowCompoundWords": true,
+  "dictionaries": ["typescript", "aws", "node", "npm", "html"],
+  "enabledLanguageIds": [
+    "typescript",
+    "typescriptreact",
+    "javascript",
+    "markdown",
+    "yaml",
+    "json"
+  ],
+  "ignorePaths": [".gitignore", "node_modules", "semaphore", "dist", ".husky"],
+  "words": ["groth", "keccak", "merkle", "nullifer", "sippl", "worldid", "ZKey"]
+}
