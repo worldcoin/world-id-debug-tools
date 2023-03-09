@@ -4,6 +4,7 @@ import { BigNumber } from "ethers";
 import { AUTH_TOKEN, CREDENTIAL_TYPE, GROUP_ID, SEQUENCER_URI } from "./const";
 import { defaultAbiCoder as abi } from "ethers/lib/utils";
 import { generateExternalNullifier, hashToField } from "./idkit.help";
+import { verifyProof } from "./utils";
 
 const APP_ID = "app_staging_6d1c9fb86751a40d9527490eafbdb1c1";
 const ACTION = "";
@@ -71,7 +72,7 @@ const main = async (args: string[]): Promise<void> => {
       );
       return;
     } else {
-      console.log("✅ inclusion proof fetched, continuing...");
+      console.log("ℹ️ inclusion proof fetched, continuing...");
     }
     merkleTree = await response.json();
   } else {
@@ -131,6 +132,8 @@ const main = async (args: string[]): Promise<void> => {
   });
 
   if (!noVerify) {
+    await verifyProof(fullProof.proof, fullProof.publicSignals);
+
     console.log("Verifying proof with smart contract...");
 
     const verifyResponse = await fetch(
@@ -152,7 +155,7 @@ const main = async (args: string[]): Promise<void> => {
     );
 
     if (verifyResponse.ok) {
-      console.log("✅ proof verified, all good fren!");
+      console.log("✅ proof verified on-chain, all good fren!");
     } else {
       console.error("❌ proof verification failed, something is wrong.");
       console.error(await verifyResponse.json());
