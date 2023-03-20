@@ -34,8 +34,8 @@ function hashPlainString(input) {
  */
 function hashByteEncoded(input) {
     return ethers.utils.defaultAbiCoder.encode(
-      ["uint256"],
-      [BigInt(ethers.utils.solidityKeccak256(["bytes"], [input])) >> BigInt(8)],
+        ["uint256"],
+        [BigInt(ethers.utils.solidityKeccak256(["bytes"], [input])) >> BigInt(8)],
     );
 };
 
@@ -45,7 +45,7 @@ function hashByteEncoded(input) {
  * @param {*} input 
  * @returns 
  */
-function plainInput(input) {return input;}
+function plainInput(input) { return input; }
 
 async function main(args) {
 
@@ -54,21 +54,14 @@ async function main(args) {
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     const proof = {
         // pass the raw signal and externalNullifier (as passed to the widget) without encoding
-        signal: '0x5e2659033d927c7b9a4285a7d22dab14e1081653',
-        externalNullifier:'0x22CF2fd72632056A3E6922d506Abc752fAc94988',
+        signal: '0x0000000000000000000000000000000000000000',
+        externalNullifier: 0,
 
         // pass the rest as found on etherscan / polygonscan
-        root: '0x1f9679165328432bd1f99c61c746e2c82ea51d2ec2a87f0b1983e7f4d8a87e74',
-        nullifier: '0x1656270324a18d3e12901a7a9e711db56e0c84e843fd2d500d414275c8f7a31c',
+        root: '0x0fbf3d63f42d2a7a4c68bd2653fcc9d75e94ba8ecdd8781d919ff7334c168ad6',
+        nullifier: '0x15b59b0c3f6222f0e918accb0d32b1d7c8842c815f724ee663e9ebf0f177e540',
         proof: [
-            '0x2fa21a133a447b28cd44d1edfed8bc4669f35739c04374f988769b991d38c6aa',
-            '0x301f42eeef89e5bcc9c42e6a19a9655ed0288e6e7d898590a57d0f571b60938d',
-            '0x1abf29a1dfc9d9088711c9ee2d28917c8629fd4d21cfe88a95eee50e22c6e75f',
-            '0x0573140fc56e2d788acb9d7ef8c39055608da8ab3eadf176967eabe51871d73b',
-            '0x23dace6567c77f7a9993bc8e495e52874d0e07ba0ec7bee43ede9b33bb218611',
-            '0x01d281e518159922413c204eef78f83da333bc2c6e1219cc292a378e97a26dd5',
-            '0x169a183e376ee7d1600c508b401ec4f2bd164d5444472633a19e7d090e20c162',
-            '0x0ea76166c6c51d7bc07a2253238901f594b2fc6f562315acf89623bcec92c3ef'
+            '9874592304872254721871489222929445604987432671731658643165920532337159274517', '8525475798243377206918537730314804212459420136408495176268561207679560298717', '10294777214362775519670186621976250364132179021555090201322102857495138955480', '8883299608923723415374224116136891505373319154338480846884175720737507943565', '13420319866441557895859868593196139131381637202804570530588845304662908427497', '11635128214311207407540870155774808846822514050583043469595358133280526121696', '17257572123585795764664595358663528559106949383973579828699774324722632620450', '5753914895580501894029728263201430263695170130632269967634541050167383453944'
         ]
     };
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -79,6 +72,7 @@ async function main(args) {
     // test one common encoding and check for the error
     var err = null;
     try {
+        console.log(hashByteEncoded(proof.signal));
         const result = await func(proof.root, 1n, hashByteEncoded(proof.signal), proof.nullifier, hashPlainString(proof.externalNullifier), proof.proof);
     } catch (e) {
         err = e.errorName;

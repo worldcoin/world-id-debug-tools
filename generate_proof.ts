@@ -6,9 +6,9 @@ import { defaultAbiCoder as abi } from "ethers/lib/utils";
 import { generateExternalNullifier, hashToField } from "./idkit.help";
 import { verifyProof } from "./utils";
 
-const APP_ID = "app_staging_6d1c9fb86751a40d9527490eafbdb1c1";
-const ACTION = "";
-const SIGNAL = "my_signal";
+const APP_ID = "app_staging_6d1c9fb86751a40d9527490eafbdb1c1"; // not used in the proof
+const ACTION = 0;
+const SIGNAL = "0x0000000000000000000000000000000000000000"; //wallet address
 
 interface MerkleTreeResponse {
   root: string;
@@ -97,7 +97,7 @@ const main = async (args: string[]): Promise<void> => {
   };
 
   const signalHash = hashToField(SIGNAL).hash;
-  const externalNullifier = generateExternalNullifier(APP_ID, ACTION).hash;
+  const externalNullifier = ACTION; //generateExternalNullifier(APP_ID, ACTION).hash;
 
   const witness = {
     identityNullifier: nullifier,
@@ -127,7 +127,8 @@ const main = async (args: string[]): Promise<void> => {
   console.log("🔑 proof generated!");
   console.log({
     nullifierHash,
-    proof: packedProof,
+    packed_proof: packedProof,
+    proof: Semaphore.packToSolidityProof(fullProof.proof),
     merkle_root: merkleTree?.root,
   });
 
