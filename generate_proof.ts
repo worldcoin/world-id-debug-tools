@@ -5,7 +5,8 @@ import { AUTH_TOKEN, CREDENTIAL_TYPE, SEQUENCER_URI } from "./const";
 import { defaultAbiCoder as abi } from "ethers/lib/utils";
 import { verifyProof } from "./utils";
 import { internal } from "@worldcoin/idkit";
-import { MerkleProof } from "@zk-kit/protocols";
+import { MerkleProof } from "@zk-kit/incremental-merkle-tree";
+
 const CONTRACT_ABI = [
   "function verifyProof (uint256 groupId, uint256 root, uint256 signalHash, uint256 nullifierHash, uint256 externalNullifierHash, uint256[8] calldata proof) external virtual onlyProxy onlyInitialized",
 ];
@@ -47,8 +48,6 @@ const main = async (args: string[]): Promise<void> => {
 
   const newIdentity = new Identity(rawId);
   const identityCommitment = newIdentity.getCommitment();
-  const trapdoor = newIdentity.getTrapdoor();
-  const nullifier = newIdentity.getNullifier();
 
   const encodedCommitment =
     "0x" + identityCommitment.toString(16).padStart(64, "0");
