@@ -1,17 +1,10 @@
-import { Proof, Semaphore, SemaphorePublicSignals } from "@zk-kit/protocols";
-import verificationKey from "./semaphore/verification_key.json";
+import {
+  FullProof,
+  verifyProof as semaphoreVerifyProof,
+} from "@semaphore-protocol/proof";
 
-export const verifyProof = async (
-  proof: Proof,
-  publicSignals: SemaphorePublicSignals
-): Promise<void> => {
-  const isValid = await Semaphore.verifyProof(
-    verificationKey as unknown as string,
-    {
-      proof,
-      publicSignals,
-    }
-  );
+export const verifyProof = async (proof: FullProof): Promise<void> => {
+  const isValid = await semaphoreVerifyProof(proof, 30);
 
   if (isValid) {
     console.info("☑️  proof verified locally!");

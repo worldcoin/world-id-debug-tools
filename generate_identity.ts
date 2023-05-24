@@ -1,6 +1,6 @@
-import { Strategy, ZkIdentity } from "@zk-kit/identity";
 import { keccak256 } from "ethers/lib/utils";
-import { AUTH_TOKEN, GROUP_ID, SEQUENCER_URI } from "./const";
+import { AUTH_TOKEN, SEQUENCER_URI } from "./const";
+import { Identity } from "@semaphore-protocol/identity";
 
 const main = async (args: string[]): Promise<void> => {
   let seed: string | undefined = undefined;
@@ -21,12 +21,10 @@ const main = async (args: string[]): Promise<void> => {
     }
   }
 
-  const strategy = seed ? Strategy.MESSAGE : Strategy.RANDOM;
-  const newIdentity = new ZkIdentity(
-    strategy,
+  const newIdentity = new Identity(
     seed ? keccak256(Buffer.from(seed)) : undefined
   );
-  const identityCommitment = newIdentity.genIdentityCommitment();
+  const identityCommitment = newIdentity.getCommitment();
   const encodedCommitment =
     "0x" + identityCommitment.toString(16).padStart(64, "0");
 
@@ -39,7 +37,7 @@ const main = async (args: string[]): Promise<void> => {
         "Content-Type": "application/json",
         Authorization: `Basic ${AUTH_TOKEN}`,
       },
-      body: JSON.stringify([GROUP_ID, encodedCommitment]),
+      body: JSON.stringify([encodedCommitment]),
     });
 
     if (response.ok) {
@@ -51,7 +49,7 @@ const main = async (args: string[]): Promise<void> => {
     }
   }
 
-  console.log(`ℹ️ serialized identity`, newIdentity.serializeIdentity());
+  console.log(`ℹ️ serialized identity`, newIdentity.toString());
 };
 
 main(process.argv)

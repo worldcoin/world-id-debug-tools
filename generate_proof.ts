@@ -1,13 +1,19 @@
-import { Strategy, ZkIdentity } from "@zk-kit/identity";
-import { Semaphore, StrBigInt } from "@zk-kit/protocols";
 import { BigNumber } from "ethers";
-import { AUTH_TOKEN, CREDENTIAL_TYPE, GROUP_ID, SEQUENCER_URI } from "./const";
+import { Identity } from "@semaphore-protocol/identity";
+import { generateProof } from "@semaphore-protocol/proof";
+import { AUTH_TOKEN, CREDENTIAL_TYPE, SEQUENCER_URI } from "./const";
 import { defaultAbiCoder as abi } from "ethers/lib/utils";
-import { generateExternalNullifier, hashToField } from "./idkit.help";
 import { verifyProof } from "./utils";
+import { internal } from "@worldcoin/idkit";
+import { MerkleProof } from "@zk-kit/protocols";
+const CONTRACT_ABI = [
+  "function verifyProof (uint256 groupId, uint256 root, uint256 signalHash, uint256 nullifierHash, uint256 externalNullifierHash, uint256[8] calldata proof) external virtual onlyProxy onlyInitialized",
+];
 
-const APP_ID = "app_staging_6d1c9fb86751a40d9527490eafbdb1c1"; // not used in the proof
-const ACTION = 0;
+const CONTRACT_ADDRESS = "0x3607500daa1fe6846b4E465f16a86d2978a8AF65";
+
+const APP_ID = "app_staging_45068dca85829d2fd90e2dd6f0bff997";
+const ACTION = "";
 const SIGNAL = "0x0000000000000000000000000000000000000000"; //wallet address
 
 interface MerkleTreeResponse {
@@ -39,8 +45,8 @@ const main = async (args: string[]): Promise<void> => {
     return;
   }
 
-  const newIdentity = new ZkIdentity(Strategy.SERIALIZED, JSON.parse(rawId));
-  const identityCommitment = newIdentity.genIdentityCommitment();
+  const newIdentity = new Identity(rawId);
+  const identityCommitment = newIdentity.getCommitment();
   const trapdoor = newIdentity.getTrapdoor();
   const nullifier = newIdentity.getNullifier();
 
@@ -52,7 +58,7 @@ const main = async (args: string[]): Promise<void> => {
   );
 
   const wasmFilePath = "./semaphore/semaphore.wasm";
-  const finalZkeyPath = "./semaphore/semaphore_final.zkey";
+  const finalZkeyPath = "./semaphore/semaphore.zkey";
 
   const response = await fetch(`${SEQUENCER_URI}inclusionProof`, {
     method: "POST",
@@ -60,7 +66,7 @@ const main = async (args: string[]): Promise<void> => {
       "Content-Type": "application/json",
       Authorization: `Basic ${AUTH_TOKEN}`,
     },
-    body: JSON.stringify([GROUP_ID, encodedCommitment]),
+    body: JSON.stringify([encodedCommitment]),
   });
 
   let merkleTree: MerkleTreeResponse | undefined;
@@ -94,49 +100,38 @@ const main = async (args: string[]): Promise<void> => {
     leaf: null,
     siblings: siblings,
     pathIndices: pathIndices,
-  };
+  } as MerkleProof;
 
-  const signalHash = hashToField(SIGNAL).hash;
-  const externalNullifier = ACTION; //generateExternalNullifier(APP_ID, ACTION).hash;
+  const signalHash = internal.hashToField(SIGNAL).hash;
+  const externalNullifier = internal.generateExternalNullifier(
+    APP_ID,
+    ACTION
+  ).hash;
 
-  const witness = {
-    identityNullifier: nullifier,
-    identityTrapdoor: trapdoor,
-    treePathIndices: merkleProof.pathIndices,
-    treeSiblings: merkleProof.siblings as StrBigInt[],
-    externalNullifier,
-    signalHash,
-  };
-
-  const fullProof = await Semaphore.genProof(
-    witness,
-    wasmFilePath,
-    finalZkeyPath
+  const fullProof = await generateProof(
+    newIdentity,
+    merkleProof,
+    externalNullifier as bigint, // IDKit will soon be updated to use native bigint
+    signalHash as bigint, // IDKit will soon be updated to use native bigint
+    { wasmFilePath: wasmFilePath, zkeyFilePath: finalZkeyPath }
   );
 
-  const nullifierHash = abi.encode(
-    ["uint256"],
-    [fullProof.publicSignals.nullifierHash]
-  );
-
-  const packedProof = abi.encode(
-    ["uint256[8]"],
-    [Semaphore.packToSolidityProof(fullProof.proof)]
-  );
+  const nullifierHash = abi.encode(["uint256"], [fullProof.nullifierHash]);
+  const packedProof = abi.encode(["uint256[8]"], [fullProof.proof]);
 
   console.log("🔑 proof generated!");
   console.log({
     nullifierHash,
     packed_proof: packedProof,
-    proof: Semaphore.packToSolidityProof(fullProof.proof),
+    proof: fullProof.proof,
     merkle_root: merkleTree?.root,
   });
 
+  await verifyProof(fullProof);
+
   if (!noVerify) {
-    await verifyProof(fullProof.proof, fullProof.publicSignals);
-
-    console.log("Verifying proof with smart contract...");
-
+    // ANCHOR verify proof with the sequencer (through the Developer Portal)
+    console.log("Verifying proof with the sequencer...");
     const verifyResponse = await fetch(
       `https://developer.worldcoin.org/api/v1/verify/${APP_ID}`,
       {
@@ -156,11 +151,17 @@ const main = async (args: string[]): Promise<void> => {
     );
 
     if (verifyResponse.ok) {
-      console.log("✅ proof verified on-chain, all good fren!");
+      console.log("✅ proof verified with the sequencer!");
     } else {
-      console.error("❌ proof verification failed, something is wrong.");
+      console.error(
+        "❌ proof verification with the sequencer failed, something is wrong."
+      );
       console.error(await verifyResponse.json());
     }
+
+    // ANCHOR verify proof directly with an RPC call
+
+    console.log("Verifying proof on-chain...");
   }
 };
 
