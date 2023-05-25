@@ -13,7 +13,7 @@ import { encodePacked } from "viem";
 
 const APP_ID = "app_staging_45068dca85829d2fd90e2dd6f0bff997";
 const ACTION = "";
-const SIGNAL = "my_signal";
+const SIGNAL = "0x00000000000000";
 
 interface MerkleTreeResponse {
   root: string;
@@ -142,29 +142,28 @@ const main = async (args: string[]): Promise<void> => {
   await verifyProofLocal(fullProof);
 
   if (!noVerify) {
-    await verifyProofOnChain({
-      proof: fullProof,
-      externalNullifier: externalNullifier,
-      signalHash: signalHash,
-    });
-
-    await verifyProofDevPortal({
-      proof: packedProof,
-      nullifierHash,
-      merkleRoot: merkleTree.root,
-      appId: APP_ID,
-      signal: SIGNAL,
-      action: ACTION,
-    });
-
-    await verifyProofSequencer({
-      proof: fullProof.proof,
-      merkleRoot: merkleTree.root,
-      externalNullifierHash: externalNullifierDigest,
-      signalHash: signalHashDigest,
-      nullifierHash,
-    });
-
+    await Promise.all([
+      verifyProofOnChain({
+        proof: fullProof,
+        externalNullifier: externalNullifier,
+        signalHash: signalHash,
+      }),
+      verifyProofDevPortal({
+        proof: packedProof,
+        nullifierHash,
+        merkleRoot: merkleTree.root,
+        appId: APP_ID,
+        signal: SIGNAL,
+        action: ACTION,
+      }),
+      verifyProofSequencer({
+        proof: fullProof.proof,
+        merkleRoot: merkleTree.root,
+        externalNullifierHash: externalNullifierDigest,
+        signalHash: signalHashDigest,
+        nullifierHash,
+      }),
+    ]);
     console.log("All gucci, by! 👋");
   }
 };
