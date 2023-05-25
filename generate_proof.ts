@@ -1,21 +1,19 @@
-import { BigNumber } from "ethers";
 import { Identity } from "@semaphore-protocol/identity";
-import { generateProof } from "@semaphore-protocol/proof";
-import { AUTH_TOKEN, CREDENTIAL_TYPE, SEQUENCER_URI } from "./const";
-import { defaultAbiCoder as abi } from "ethers/lib/utils";
-import { verifyProof } from "./utils";
+import { generateSemaphoreProof } from "./semaphore/semaphoreProof";
+import { AUTH_TOKEN, SEQUENCER_URI } from "./const";
+import {
+  verifyProofDevPortal,
+  verifyProofLocal,
+  verifyProofOnChain,
+  verifyProofSequencer,
+} from "./verify";
 import { internal } from "@worldcoin/idkit";
 import { MerkleProof } from "@zk-kit/incremental-merkle-tree";
-
-const CONTRACT_ABI = [
-  "function verifyProof (uint256 groupId, uint256 root, uint256 signalHash, uint256 nullifierHash, uint256 externalNullifierHash, uint256[8] calldata proof) external virtual onlyProxy onlyInitialized",
-];
-
-const CONTRACT_ADDRESS = "0x3607500daa1fe6846b4E465f16a86d2978a8AF65";
+import { encodePacked } from "viem";
 
 const APP_ID = "app_staging_45068dca85829d2fd90e2dd6f0bff997";
 const ACTION = "";
-const SIGNAL = "0x0000000000000000000000000000000000000000"; //wallet address
+const SIGNAL = "my_signal";
 
 interface MerkleTreeResponse {
   root: string;
@@ -86,9 +84,13 @@ const main = async (args: string[]): Promise<void> => {
     return;
   }
 
+  if (!merkleTree?.root) {
+    throw new Error("❌ no merkle root found in sequencer response");
+  }
+
   const siblings = merkleTree?.proof
     .flatMap((v) => Object.values(v))
-    .map((v) => BigNumber.from(v).toBigInt());
+    .map((v) => BigInt(v));
 
   const pathIndices = merkleTree?.proof
     .flatMap((v) => Object.keys(v))
@@ -101,13 +103,12 @@ const main = async (args: string[]): Promise<void> => {
     pathIndices: pathIndices,
   } as MerkleProof;
 
-  const signalHash = internal.hashToField(SIGNAL).hash;
-  const externalNullifier = internal.generateExternalNullifier(
-    APP_ID,
-    ACTION
-  ).hash;
+  const { hash: signalHash, digest: signalHashDigest } =
+    internal.hashToField(SIGNAL);
+  const { hash: externalNullifier, digest: externalNullifierDigest } =
+    internal.generateExternalNullifier(APP_ID, ACTION);
 
-  const fullProof = await generateProof(
+  const fullProof = await generateSemaphoreProof(
     newIdentity,
     merkleProof,
     externalNullifier as bigint, // IDKit will soon be updated to use native bigint
@@ -115,52 +116,56 @@ const main = async (args: string[]): Promise<void> => {
     { wasmFilePath: wasmFilePath, zkeyFilePath: finalZkeyPath }
   );
 
-  const nullifierHash = abi.encode(["uint256"], [fullProof.nullifierHash]);
-  const packedProof = abi.encode(["uint256[8]"], [fullProof.proof]);
+  const nullifierHash = encodePacked(
+    ["uint256"],
+    [fullProof.nullifierHash as bigint]
+  );
+  const typedProof = fullProof.proof as [
+    bigint,
+    bigint,
+    bigint,
+    bigint,
+    bigint,
+    bigint,
+    bigint,
+    bigint
+  ];
+  const packedProof = encodePacked(["uint256[8]"], [typedProof]);
 
   console.log("🔑 proof generated!");
   console.log({
     nullifierHash,
     packed_proof: packedProof,
-    proof: fullProof.proof,
     merkle_root: merkleTree?.root,
   });
 
-  await verifyProof(fullProof);
+  await verifyProofLocal(fullProof);
 
   if (!noVerify) {
-    // ANCHOR verify proof with the sequencer (through the Developer Portal)
-    console.log("Verifying proof with the sequencer...");
-    const verifyResponse = await fetch(
-      `https://developer.worldcoin.org/api/v1/verify/${APP_ID}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          nullifier_hash: nullifierHash,
-          proof: packedProof,
-          merkle_root: merkleTree?.root,
-          credential_type: CREDENTIAL_TYPE,
-          action: ACTION,
-          signal: SIGNAL,
-        }),
-      }
-    );
+    await verifyProofOnChain({
+      proof: fullProof,
+      externalNullifier: externalNullifier,
+      signalHash: signalHash,
+    });
 
-    if (verifyResponse.ok) {
-      console.log("✅ proof verified with the sequencer!");
-    } else {
-      console.error(
-        "❌ proof verification with the sequencer failed, something is wrong."
-      );
-      console.error(await verifyResponse.json());
-    }
+    await verifyProofDevPortal({
+      proof: packedProof,
+      nullifierHash,
+      merkleRoot: merkleTree.root,
+      appId: APP_ID,
+      signal: SIGNAL,
+      action: ACTION,
+    });
 
-    // ANCHOR verify proof directly with an RPC call
+    await verifyProofSequencer({
+      proof: fullProof.proof,
+      merkleRoot: merkleTree.root,
+      externalNullifierHash: externalNullifierDigest,
+      signalHash: signalHashDigest,
+      nullifierHash,
+    });
 
-    console.log("Verifying proof on-chain...");
+    console.log("All gucci, by! 👋");
   }
 };
 
