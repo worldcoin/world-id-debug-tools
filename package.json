@@ -13,10 +13,12 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@zk-kit/identity": "^1.4.1",
-    "@zk-kit/protocols": "^1.11.1",
+    "@semaphore-protocol/group": "^3.10.1",
+    "@semaphore-protocol/identity": "^3.10.1",
+    "@semaphore-protocol/proof": "^3.10.1",
+    "@worldcoin/idkit": "^0.4.9",
     "dotenv": "^16.0.3",
-    "ethers": "^5.6.9"
+    "viem": "^0.3.36"
   },
   "devDependencies": {
     "ts-node": "^10.9.1",

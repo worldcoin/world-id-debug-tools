@@ -1,14 +1,19 @@
-import { Strategy, ZkIdentity } from "@zk-kit/identity";
-import { Semaphore, StrBigInt } from "@zk-kit/protocols";
-import { BigNumber } from "ethers";
-import { AUTH_TOKEN, CREDENTIAL_TYPE, GROUP_ID, SEQUENCER_URI } from "./const";
-import { defaultAbiCoder as abi } from "ethers/lib/utils";
-import { generateExternalNullifier, hashToField } from "./idkit.help";
-import { verifyProof } from "./utils";
+import { Identity } from "@semaphore-protocol/identity";
+import { generateSemaphoreProof } from "./semaphore/semaphoreProof";
+import { AUTH_TOKEN, SEQUENCER_URI } from "./const";
+import {
+  verifyProofDevPortal,
+  verifyProofLocal,
+  verifyProofOnChain,
+  verifyProofSequencer,
+} from "./verify";
+import { internal } from "@worldcoin/idkit";
+import { MerkleProof } from "@zk-kit/incremental-merkle-tree";
+import { encodePacked } from "viem";
 
-const APP_ID = "app_staging_6d1c9fb86751a40d9527490eafbdb1c1"; // not used in the proof
-const ACTION = 0;
-const SIGNAL = "0x0000000000000000000000000000000000000000"; //wallet address
+const APP_ID = "app_staging_45068dca85829d2fd90e2dd6f0bff997";
+const ACTION = "";
+const SIGNAL = "0x00000000000000";
 
 interface MerkleTreeResponse {
   root: string;
@@ -39,10 +44,8 @@ const main = async (args: string[]): Promise<void> => {
     return;
   }
 
-  const newIdentity = new ZkIdentity(Strategy.SERIALIZED, JSON.parse(rawId));
-  const identityCommitment = newIdentity.genIdentityCommitment();
-  const trapdoor = newIdentity.getTrapdoor();
-  const nullifier = newIdentity.getNullifier();
+  const newIdentity = new Identity(rawId);
+  const identityCommitment = newIdentity.getCommitment();
 
   const encodedCommitment =
     "0x" + identityCommitment.toString(16).padStart(64, "0");
@@ -52,7 +55,7 @@ const main = async (args: string[]): Promise<void> => {
   );
 
   const wasmFilePath = "./semaphore/semaphore.wasm";
-  const finalZkeyPath = "./semaphore/semaphore_final.zkey";
+  const finalZkeyPath = "./semaphore/semaphore.zkey";
 
   const response = await fetch(`${SEQUENCER_URI}inclusionProof`, {
     method: "POST",
@@ -60,7 +63,7 @@ const main = async (args: string[]): Promise<void> => {
       "Content-Type": "application/json",
       Authorization: `Basic ${AUTH_TOKEN}`,
     },
-    body: JSON.stringify([GROUP_ID, encodedCommitment]),
+    body: JSON.stringify([encodedCommitment]),
   });
 
   let merkleTree: MerkleTreeResponse | undefined;
@@ -81,9 +84,13 @@ const main = async (args: string[]): Promise<void> => {
     return;
   }
 
+  if (!merkleTree?.root) {
+    throw new Error("❌ no merkle root found in sequencer response");
+  }
+
   const siblings = merkleTree?.proof
     .flatMap((v) => Object.values(v))
-    .map((v) => BigNumber.from(v).toBigInt());
+    .map((v) => BigInt(v));
 
   const pathIndices = merkleTree?.proof
     .flatMap((v) => Object.keys(v))
@@ -94,73 +101,70 @@ const main = async (args: string[]): Promise<void> => {
     leaf: null,
     siblings: siblings,
     pathIndices: pathIndices,
-  };
+  } as MerkleProof;
 
-  const signalHash = hashToField(SIGNAL).hash;
-  const externalNullifier = ACTION; //generateExternalNullifier(APP_ID, ACTION).hash;
+  const { hash: signalHash, digest: signalHashDigest } =
+    internal.hashToField(SIGNAL);
+  const { hash: externalNullifier, digest: externalNullifierDigest } =
+    internal.generateExternalNullifier(APP_ID, ACTION);
 
-  const witness = {
-    identityNullifier: nullifier,
-    identityTrapdoor: trapdoor,
-    treePathIndices: merkleProof.pathIndices,
-    treeSiblings: merkleProof.siblings as StrBigInt[],
-    externalNullifier,
-    signalHash,
-  };
-
-  const fullProof = await Semaphore.genProof(
-    witness,
-    wasmFilePath,
-    finalZkeyPath
+  const fullProof = await generateSemaphoreProof(
+    newIdentity,
+    merkleProof,
+    externalNullifier as bigint, // IDKit will soon be updated to use native bigint
+    signalHash as bigint, // IDKit will soon be updated to use native bigint
+    { wasmFilePath: wasmFilePath, zkeyFilePath: finalZkeyPath }
   );
 
-  const nullifierHash = abi.encode(
+  const nullifierHash = encodePacked(
     ["uint256"],
-    [fullProof.publicSignals.nullifierHash]
+    [fullProof.nullifierHash as bigint]
   );
-
-  const packedProof = abi.encode(
-    ["uint256[8]"],
-    [Semaphore.packToSolidityProof(fullProof.proof)]
-  );
+  const typedProof = fullProof.proof as [
+    bigint,
+    bigint,
+    bigint,
+    bigint,
+    bigint,
+    bigint,
+    bigint,
+    bigint
+  ];
+  const packedProof = encodePacked(["uint256[8]"], [typedProof]);
 
   console.log("🔑 proof generated!");
   console.log({
     nullifierHash,
     packed_proof: packedProof,
-    proof: Semaphore.packToSolidityProof(fullProof.proof),
     merkle_root: merkleTree?.root,
   });
 
+  await verifyProofLocal(fullProof);
+
   if (!noVerify) {
-    await verifyProof(fullProof.proof, fullProof.publicSignals);
-
-    console.log("Verifying proof with smart contract...");
-
-    const verifyResponse = await fetch(
-      `https://developer.worldcoin.org/api/v1/verify/${APP_ID}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          nullifier_hash: nullifierHash,
-          proof: packedProof,
-          merkle_root: merkleTree?.root,
-          credential_type: CREDENTIAL_TYPE,
-          action: ACTION,
-          signal: SIGNAL,
-        }),
-      }
-    );
-
-    if (verifyResponse.ok) {
-      console.log("✅ proof verified on-chain, all good fren!");
-    } else {
-      console.error("❌ proof verification failed, something is wrong.");
-      console.error(await verifyResponse.json());
-    }
+    await Promise.all([
+      verifyProofOnChain({
+        proof: fullProof,
+        externalNullifier: externalNullifier,
+        signalHash: signalHash,
+      }),
+      verifyProofDevPortal({
+        proof: packedProof,
+        nullifierHash,
+        merkleRoot: merkleTree.root,
+        appId: APP_ID,
+        signal: SIGNAL,
+        action: ACTION,
+      }),
+      verifyProofSequencer({
+        proof: fullProof.proof,
+        merkleRoot: merkleTree.root,
+        externalNullifierHash: externalNullifierDigest,
+        signalHash: signalHashDigest,
+        nullifierHash,
+      }),
+    ]);
+    console.log("All gucci, by! 👋");
   }
 };
 
