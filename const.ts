@@ -3,7 +3,7 @@ import { config } from "dotenv";
 config();
 
 export const SEQUENCER_URI =
-  "https://signup-batching.stage-crypto.worldcoin.dev/";
+  "https://signup-batching.stage-crypto.worldcoin.org/";
 export const AUTH_TOKEN = process.env.AUTH_TOKEN;
 export const CREDENTIAL_TYPE = "orb";
 export const GROUP_ID = BigInt(1); // Group ID for the Orb credential
