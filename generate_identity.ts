@@ -1,4 +1,4 @@
-import { keccak256 } from "ethers/lib/utils";
+import { keccak256 } from "viem";
 import { AUTH_TOKEN, SEQUENCER_URI } from "./const";
 import { Identity } from "@semaphore-protocol/identity";
 
